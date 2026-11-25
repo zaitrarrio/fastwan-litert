@@ -74,13 +74,37 @@ def main() -> int:
     frames_g_of_r = pipe.decode(lat_r).rgb  # the TAE graph on the reference latent: decode-only error
     print(f"torch:  denoise {t_den_r:.1f} s, decode {t_dec_r:.1f} s", flush=True)
 
+    # per-forward error on the reference trajectory (no divergence folded in)
+    from fastwan_litert.host import dmd_step
+    from fastwan_litert.rng import Rng
+    from fastwan_litert.rope import rope_table
+
+    cos, sin = rope_table(cfg, g.grid(cfg), 0)
+    attn = m.attention_for(g.tokens(cfg))
+    prompt = pipe.prepare_prompt(embeds)
+    lt, lh, lw = g.latent()
+    rng = Rng(a.seed)
+    x = rng.normal(cfg.in_channels * lt * lh * lw).reshape(cfg.in_channels, lt, lh, lw)
+    emb_t = torch.from_numpy(np.ascontiguousarray(embeds, dtype=np.float32))
+    cos_t, sin_t = torch.from_numpy(cos), torch.from_numpy(sin)
+    step_err = []
+    with torch.no_grad():
+        for i, t in enumerate(m.schedule.timesteps):
+            v_r = dit(torch.from_numpy(x), emb_t, torch.tensor([float(t)]), cos_t, sin_t).numpy()
+            v_g = pipe.forward(x, prompt, float(t), cos, sin, attn)
+            step_err.append(rel(v_g, v_r))
+            sigma, nxt = m.schedule.coeffs(i)
+            noise = rng.normal(x.size).reshape(x.shape) if nxt is not None else None
+            x = dmd_step(x, v_r, sigma, nxt, noise)
+    print("per-step velocity rel err (graphs vs torch, same input):", [f"{e:.4f}" for e in step_err], flush=True)
+
     d_lat = rel(lat_g, lat_r)
     d_dec = int(np.abs(frames_g_of_r.astype(np.int16) - frames_r.astype(np.int16)).max())
     d_dec_mean = float(np.abs(frames_g_of_r.astype(np.int16) - frames_r.astype(np.int16)).mean())
     d_all = float(np.abs(vid_g.rgb.astype(np.int16) - frames_r.astype(np.int16)).mean())
     rep = {
         "size": a.size, "seed": a.seed, "weights": m.raw.get("weights"), "accelerator": a.accelerator,
-        "latent_rel_err": d_lat, "decode_max_abs_8bit": d_dec, "decode_mean_abs_8bit": d_dec_mean,
+        "latent_rel_err": d_lat, "step_velocity_rel_err": step_err, "decode_max_abs_8bit": d_dec, "decode_mean_abs_8bit": d_dec_mean,
         "end_to_end_mean_abs_8bit": d_all,
         "graphs_denoise_s": t_den_g, "graphs_decode_s": t_dec_g, "torch_denoise_s": t_den_r, "torch_decode_s": t_dec_r,
         "latent_shape": list(lat_r.shape), "frames": list(frames_r.shape),

@@ -38,7 +38,8 @@ class SafetensorsDir:
         files = sorted(path.glob("*.safetensors")) if path.is_dir() else [path]
         if not files:
             raise FileNotFoundError(f"no .safetensors in {path}")
-        self._files = [safe_open(str(f), framework="np") for f in files]
+        # torch framework: bf16 checkpoints read where numpy's reader refuses them
+        self._files = [safe_open(str(f), framework="pt") for f in files]
         self._index: dict[str, int] = {}
         for i, f in enumerate(self._files):
             for k in f.keys():
@@ -53,19 +54,13 @@ class SafetensorsDir:
     def get(self, name: str, shape: tuple[int, ...]) -> np.ndarray:
         if name not in self._index:
             raise KeyError(f"missing tensor `{name}`")
-        f = self._files[self._index[name]]
-        t = f.get_tensor(name)
-        if t.dtype == np.dtype("V2") or str(t.dtype) == "bfloat16":
-            t = _bf16_to_f32(t)
-        t = np.asarray(t, dtype=np.float32)
+        import torch
+
+        t = self._files[self._index[name]].get_tensor(name).to(torch.float32).numpy()
         if _squeeze(t.shape) != _squeeze(shape):
             raise ValueError(f"`{name}` is {list(t.shape)}, expected {list(shape)}")
         return t.reshape(shape)
 
-
-def _bf16_to_f32(t: np.ndarray) -> np.ndarray:
-    raw = np.frombuffer(t.tobytes(), dtype=np.uint16).astype(np.uint32) << 16
-    return raw.view(np.float32).reshape(t.shape)
 
 
 class Synthetic:
