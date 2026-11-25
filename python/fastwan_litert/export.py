@@ -49,7 +49,8 @@ def _convert(module: torch.nn.Module, kwargs: dict[str, torch.Tensor], out: Path
         import tensorflow as tf
 
         flags = {"optimizations": [tf.lite.Optimize.DEFAULT], "target_spec.supported_types": [tf.float16]}
-    edge = litert_torch.convert(module.eval(), sample_kwargs=kwargs, _ai_edge_converter_flags=flags)
+    # `strict_export=True`: one torch.export path, so an export is reproducible byte for byte.
+    edge = litert_torch.convert(module.eval(), sample_kwargs=kwargs, strict_export=True, _ai_edge_converter_flags=flags)
     edge.export(str(out))
 
 
