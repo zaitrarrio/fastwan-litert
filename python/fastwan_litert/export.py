@@ -48,7 +48,9 @@ def _convert(module: torch.nn.Module, kwargs: dict[str, torch.Tensor], out: Path
     if f16:
         import tensorflow as tf
 
-        flags = {"optimizations": [tf.lite.Optimize.DEFAULT], "target_spec.supported_types": [tf.float16]}
+        # nested keys: litert-torch walks the dict (`converter.target_spec.supported_types`); a dotted
+        # key sets a stray attribute and `Optimize.DEFAULT` alone quantizes to dynamic-range int8
+        flags = {"optimizations": [tf.lite.Optimize.DEFAULT], "target_spec": {"supported_types": [tf.float16]}}
     # `strict_export=True`: one torch.export path, so an export is reproducible byte for byte.
     edge = litert_torch.convert(module.eval(), sample_kwargs=kwargs, strict_export=True, _ai_edge_converter_flags=flags)
     edge.export(str(out))
