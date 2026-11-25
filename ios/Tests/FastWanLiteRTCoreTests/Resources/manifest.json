@@ -1,0 +1,144 @@
+{
+ "format": "fastwan-litert/1",
+ "model": "tiny",
+ "config": {
+  "patch": 2,
+  "heads": 2,
+  "head_dim": 12,
+  "in_channels": 4,
+  "out_channels": 4,
+  "text_dim": 16,
+  "text_len": 8,
+  "freq_dim": 16,
+  "ffn_dim": 40,
+  "layers": 2,
+  "eps": 1e-06,
+  "rope_max_seq_len": 64,
+  "rope_theta": 10000.0
+ },
+ "tae": {
+  "latent_channels": 4,
+  "widths": [
+   8,
+   6,
+   4,
+   4
+  ],
+  "tgrow": [
+   1,
+   2,
+   2
+  ],
+  "mem_blocks": 3,
+  "patch": 1,
+  "denormalize": false
+ },
+ "schedule": {
+  "timesteps": [
+   1000,
+   757,
+   522
+  ],
+  "sigmas": [
+   1.0,
+   0.7567567229270935,
+   0.52173912525177,
+   0.0
+  ]
+ },
+ "weights": "f16",
+ "chunk": 16,
+ "graphs": {
+  "time_mods": "time_mods.tflite",
+  "text_embed": "text_embed.tflite",
+  "patch_embed": "patch_embed.tflite",
+  "head": "head.tflite",
+  "blocks": [
+   {
+    "kv": "block_00_kv.tflite",
+    "qkv": "block_00_qkv.tflite",
+    "post": "block_00_post.tflite",
+    "bytes": 61912
+   },
+   {
+    "kv": "block_01_kv.tflite",
+    "qkv": "block_01_qkv.tflite",
+    "post": "block_01_post.tflite",
+    "bytes": 61912
+   }
+  ]
+ },
+ "attention": [
+  {
+   "tokens": 18,
+   "q_chunk": 8,
+   "heads": 2,
+   "file": "attn_s18_q8_h2.tflite"
+  }
+ ],
+ "tae_chunks": [
+  {
+   "frames": 2,
+   "latent_h": 6,
+   "latent_w": 4,
+   "file": "tae_f2_6x4.tflite"
+  }
+ ],
+ "sizes": [
+  {
+   "width": 32,
+   "height": 48,
+   "frames": 9
+  }
+ ],
+ "files": {
+  "time_mods.tflite": {
+   "bytes": 24356,
+   "sha256": "7265e9b6389001f1fe2e879467e48ded8ade535b9fbdc264d7242aba0b3cac70"
+  },
+  "text_embed.tflite": {
+   "bytes": 5856,
+   "sha256": "228dfe42c9c880283a9ff8f18361d9329655250c382ebdd8775a4d10c4b5de65"
+  },
+  "patch_embed.tflite": {
+   "bytes": 2772,
+   "sha256": "4fc94656a7893ec39907adc421c294b34897cdd7dbe5cbe803ba416bc5d5013b"
+  },
+  "head.tflite": {
+   "bytes": 6824,
+   "sha256": "6d4c956eb010240513240991a82b574002f83125b9b3c8b848af4f864fc5019e"
+  },
+  "block_00_kv.tflite": {
+   "bytes": 9092,
+   "sha256": "7ab5751b458c0e330cdc04ba6951fbba2b35017cc57489ffe915cca30207a94e"
+  },
+  "block_00_qkv.tflite": {
+   "bytes": 22444,
+   "sha256": "be15e953ac7c0d5cab87811e345e19517704a5582535eb45c8893a14398c0961"
+  },
+  "block_00_post.tflite": {
+   "bytes": 30376,
+   "sha256": "680e7c59af32fac6052f109e51177c6eaeb1620b9482b64d9fb916e0630a8483"
+  },
+  "block_01_kv.tflite": {
+   "bytes": 9092,
+   "sha256": "b2d8723e2724656d8a847bb6c962c9f91b150641f88209250c47bc39af665361"
+  },
+  "block_01_qkv.tflite": {
+   "bytes": 22444,
+   "sha256": "d24740dd8beaa13fa0e094cc2b4bf332ef67043c5215a8834a0c3199c265c15d"
+  },
+  "block_01_post.tflite": {
+   "bytes": 30376,
+   "sha256": "6334374ac4a900aa09c97792d22f594070b4434068ef16890ed4fd5418528d73"
+  },
+  "attn_s18_q8_h2.tflite": {
+   "bytes": 2692,
+   "sha256": "ef05426a413111b2367e9f8816622a4e45e93bc4f0d7bead6384d73c2258b862"
+  },
+  "tae_f2_6x4.tflite": {
+   "bytes": 104280,
+   "sha256": "425a45594450de2c7b2914878196714c08426a2b5028c8d24eee97d57cd379a5"
+  }
+ }
+}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FastWan LiteRT studio</title>
+<style>
+:root{--bg:#0f1115;--fg:#e8e8ea;--mut:#8a8f98;--acc:#6ea8fe;--card:#171a21}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
+main{max-width:960px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:8px 0 16px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+label{display:flex;flex-direction:column;gap:4px;color:var(--mut);font-size:13px}
+select,input,button{background:var(--card);color:var(--fg);border:1px solid #2a2f3a;border-radius:6px;padding:8px 10px;font:inherit}
+button{background:var(--acc);color:#0b1020;border:0;font-weight:600;cursor:pointer}
+#log{color:var(--mut);white-space:pre-wrap;margin-top:12px;font-size:13px}
+canvas{display:block;margin-top:16px;max-width:100%;background:#000;border-radius:8px}
+</style></head><body><main>
+<h1>FastWan on LiteRT <span id="info" style="color:var(--mut);font-weight:400;font-size:14px"></span></h1>
+<div class="row">
+ <label>Prompt (gallery)<select id="prompt"></select></label>
+ <label>Size<select id="size"></select></label>
+ <label>Seed<input id="seed" type="number" value="7" style="width:90px"></label>
+ <button id="go">Generate</button>
+</div>
+<div id="log"></div>
+<canvas id="view" width="832" height="480"></canvas>
+<script>
+const $=s=>document.querySelector(s);const log=m=>{$('#log').textContent+=m+"\n"};
+let frames=[],playing=null;
+async function init(){
+  const info=await (await fetch('/api/info')).json();
+  $('#info').textContent=`${info.model} · ${info.weights} · ${info.accelerator}`;
+  for(const p of info.prompts){const o=document.createElement('option');o.textContent=p;$('#prompt').append(o)}
+  for(const s of info.sizes){const o=document.createElement('option');o.textContent=`${s.width}x${s.height}x${s.frames}`;$('#size').append(o)}
+  if(!info.prompts.length) log('No gallery: start with --gallery <dir of prompt .safetensors> (fastwan-litert encode).');
+}
+function play(w,h){
+  const c=$('#view');c.width=w;c.height=h;const ctx=c.getContext('2d');let i=0;
+  if(playing)clearInterval(playing);
+  playing=setInterval(()=>{if(!frames.length)return;ctx.drawImage(frames[i%frames.length],0,0);i++},1000/16);
+}
+$('#go').onclick=async()=>{
+  frames=[];$('#log').textContent='';
+  const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:$('#prompt').value,size:$('#size').value,seed:+$('#seed').value})});
+  const {id,error}=await r.json(); if(error){log(error);return}
+  let since=0,next=0;
+  for(;;){
+    const st=await (await fetch(`/api/job?id=${id}&since=${since}`)).json(); since=st.next;
+    for(const ev of st.events){
+      if(ev.type==='prepared')log(`prepared ${ev.tokens} tokens in ${(ev.ms/1000).toFixed(1)} s`);
+      if(ev.type==='step')log(`step ${ev.index+1}/${ev.total}: ${(ev.ms/1000).toFixed(1)} s`);
+      if(ev.type==='frames'){for(let k=0;k<ev.count;k++){const im=new Image();im.src=`/api/frame?id=${id}&i=${next++}`;frames.push(im)} play(ev.width,ev.height)}
+      if(ev.type==='done')log(`done: ${ev.frames} frames in ${ev.secs.toFixed(1)} s`);
+      if(ev.type==='error')log('error: '+ev.message);
+    }
+    if(st.state==='done'||st.state==='failed')break;
+    await new Promise(r=>setTimeout(r,500));
+  }
+};
+init();
+</script></main></body></html>
