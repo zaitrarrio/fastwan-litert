@@ -111,20 +111,23 @@ def _run_blocks(job_args: list, jobs: int, log) -> list:
     """`_block_job` over the blocks, `jobs` at once. A worker the OS kills (the cgroup OOM
     killer is the usual one) loses its task and a plain Pool waits forever; this restarts the
     pool and re-dispatches whatever is still missing."""
-    if jobs <= 1:
+    import multiprocessing as mp
+
+    if jobs <= 0:  # in this process (the tiny self-test); a real export always uses fresh processes
         out = []
         for a in job_args:
             r = _block_job(a)
             out.append(r)
             log(f"  block {r['l']:02d}: qkv {r['qkv_secs']} s, post {r['post_secs']} s")
         return out
-    import multiprocessing as mp
+    jobs = max(1, jobs)
     import time as _time
 
     results: dict[int, dict] = {}
     pending = list(job_args)
     while pending:
-        with mp.get_context("spawn").Pool(jobs) as pool:
+        # a fresh process per block: the converter keeps ~0.4–1 GB per graph it has converted
+        with mp.get_context("spawn").Pool(jobs, maxtasksperchild=1) as pool:
             handles = {a[2]: pool.apply_async(_block_job, (a,)) for a in pending}
             dead = False
             while handles and not dead:
@@ -307,7 +310,7 @@ def export_tiny(out_dir: Path, weights: str = "f32", log=print) -> dict:
     cfg, tcfg = WanConfig.tiny(), TaeConfig.tiny()
     src = Synthetic(0)
     manifest = export(
-        out_dir, cfg, tcfg, src, src, src_spec=("synthetic", 0), model_name="tiny", weights=weights, chunk=16, q_chunk=8,
+        out_dir, cfg, tcfg, src, src, src_spec=("synthetic", 0), model_name="tiny", weights=weights, chunk=16, q_chunk=8, jobs=0,
         sizes=[TINY_GEOMETRY], tae_frames=2, log=log,
     )
     dit = WanDit(cfg).eval()
