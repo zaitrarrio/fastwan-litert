@@ -38,7 +38,7 @@ def cmd_export(a: argparse.Namespace) -> int:
     sizes = [Geometry.parse(s) for s in a.size] if a.size else [FASTWAN_480P, MOBILE_480x272]
     export(
         Path(a.out), cfg, tcfg, SafetensorsDir(tdir), SafetensorsDir(tae_path), src_spec=("safetensors", str(tdir)), model_name="fastwan-1.3b",
-        weights=a.weights, chunk=a.chunk, q_chunk=a.q_chunk, sizes=sizes, tae_frames=a.tae_frames, jobs=a.jobs, log=_log,
+        weights=a.weights, chunk=a.chunk, q_chunk=a.q_chunk, sizes=sizes, tae_frames=a.tae_frames, jobs=a.jobs, resume=a.resume, log=_log,
     )
     return 0
 
@@ -170,7 +170,8 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--q-chunk", type=int, default=256, help="queries per attention call")
     e.add_argument("--tae-frames", type=int, default=3, help="latent frames per TAEHV chunk")
     e.add_argument("--size", action="append", help="WxHxF to export attention / TAEHV graphs for (repeatable; default 832x480x81 and 480x272x33)")
-    e.add_argument("--jobs", type=int, default=1, help="block graphs converted in parallel worker processes")
+    e.add_argument("--jobs", type=int, default=1, help="block graphs converted in parallel worker processes (a few GB RAM each)")
+    e.add_argument("--resume", action="store_true", help="keep the graphs already in --out (a killed export picks up where it stopped)")
     e.set_defaults(fn=cmd_export)
 
     def runtime_args(p):

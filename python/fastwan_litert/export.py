@@ -42,6 +42,8 @@ class TaeChunkGraph(torch.nn.Module):
 
 
 def _convert(module: torch.nn.Module, kwargs: dict[str, torch.Tensor], out: Path, f16: bool) -> None:
+    if RESUME and _graph_ok(out):
+        return
     import litert_torch
 
     flags = None
@@ -58,10 +60,12 @@ def _convert(module: torch.nn.Module, kwargs: dict[str, torch.Tensor], out: Path
 
 def _block_job(args) -> dict:
     """Worker: export one block's `kv`, `qkv` and `post` graphs from a fresh source."""
-    cfg_json, src_spec, l, out_dir, chunk, weights = args
+    cfg_json, src_spec, l, out_dir, chunk, weights, resume = args
     import warnings
 
     warnings.filterwarnings("ignore")
+    global RESUME
+    RESUME = resume  # a spawned worker starts with the module default
     from .modules import BlockKV, BlockPost, BlockQkv
     from .weights import load_block, open_source
 
@@ -85,6 +89,60 @@ def _block_job(args) -> dict:
         entry[kind] = name
         entry[f"{kind}_secs"] = round(time.time() - t0, 1)
     return {"l": l, **entry}
+
+
+RESUME = False  # skip graphs that already exist in `out_dir` (export(..., resume=True))
+
+
+def _graph_ok(path: Path) -> bool:
+    """A finished graph file (resume skips it): it exists and the flatbuffer loads."""
+    try:
+        if not path.is_file() or path.stat().st_size == 0:
+            return False
+        from ai_edge_litert import interpreter as li
+
+        li.Interpreter(model_path=str(path))
+        return True
+    except Exception:
+        return False
+
+
+def _run_blocks(job_args: list, jobs: int, log) -> list:
+    """`_block_job` over the blocks, `jobs` at once. A worker the OS kills (the cgroup OOM
+    killer is the usual one) loses its task and a plain Pool waits forever; this restarts the
+    pool and re-dispatches whatever is still missing."""
+    if jobs <= 1:
+        out = []
+        for a in job_args:
+            r = _block_job(a)
+            out.append(r)
+            log(f"  block {r['l']:02d}: qkv {r['qkv_secs']} s, post {r['post_secs']} s")
+        return out
+    import multiprocessing as mp
+    import time as _time
+
+    results: dict[int, dict] = {}
+    pending = list(job_args)
+    while pending:
+        with mp.get_context("spawn").Pool(jobs) as pool:
+            handles = {a[2]: pool.apply_async(_block_job, (a,)) for a in pending}
+            dead = False
+            while handles and not dead:
+                for l, h in list(handles.items()):
+                    if h.ready():
+                        r = h.get()
+                        results[r["l"]] = r
+                        log(f"  block {r['l']:02d}: qkv {r['qkv_secs']} s, post {r['post_secs']} s")
+                        del handles[l]
+                if any(p.exitcode is not None for p in pool._pool):  # a worker died: its task is lost
+                    dead = True
+                    break
+                _time.sleep(2)
+            if dead:
+                log("  a worker process died (killed? out of memory?): restarting the pool for the missing blocks")
+                pool.terminate()
+        pending = [a for a in pending if a[2] not in results]
+    return [results[l] for l in sorted(results)]
 
 
 def _quantize(path: Path, weights: str) -> None:
@@ -123,6 +181,7 @@ def export(
     tae_frames: int = 3,
     schedule: DmdSchedule | None = None,
     jobs: int = 1,
+    resume: bool = False,
     log=print,
 ) -> dict:
     if weights not in WEIGHT_FORMATS:
@@ -131,6 +190,8 @@ def export(
         g.validate(cfg)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    global RESUME
+    RESUME = resume
     sched = schedule or DmdSchedule.fastwan_1_3b()
     torch.manual_seed(0)
     dit = WanDit(cfg, with_blocks=False).eval()
@@ -164,21 +225,8 @@ def export(
     graphs["head"] = "head.tflite"
     done("head.tflite", t0)
 
-    job_args = [(cfg.to_json(), src_spec, l, str(out_dir), chunk, weights) for l in range(cfg.layers)]
-    results = []
-    if jobs > 1:
-        import multiprocessing as mp
-
-        with mp.get_context("spawn").Pool(jobs) as pool:
-            for r in pool.imap_unordered(_block_job, job_args):
-                results.append(r)
-                log(f"  block {r['l']:02d}: kv {r['kv_secs']} s, qkv {r['qkv_secs']} s, post {r['post_secs']} s")
-    else:
-        for a in job_args:
-            r = _block_job(a)
-            results.append(r)
-            log(f"  block {r['l']:02d}: kv {r['kv_secs']} s, qkv {r['qkv_secs']} s, post {r['post_secs']} s")
-    results.sort(key=lambda r: r["l"])
+    job_args = [(cfg.to_json(), src_spec, l, str(out_dir), chunk, weights, resume) for l in range(cfg.layers)]
+    results = _run_blocks(job_args, jobs, log)
     blocks = []
     for r in results:
         for k in ("kv", "qkv", "post"):
