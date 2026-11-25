@@ -45,8 +45,8 @@ $('#go').onclick=async()=>{
   for(;;){
     const st=await (await fetch(`/api/job?id=${id}&since=${since}`)).json(); since=st.next;
     for(const ev of st.events){
-      if(ev.type==='prepared')log(`prepared ${ev.tokens} tokens in ${ev.secs.toFixed(1)} s`);
-      if(ev.type==='step')log(`step ${ev.index+1}/${ev.total}: ${ev.secs.toFixed(1)} s`);
+      if(ev.type==='prepared')log(`prepared ${ev.tokens} tokens in ${(ev.ms/1000).toFixed(1)} s`);
+      if(ev.type==='step')log(`step ${ev.index+1}/${ev.total}: ${(ev.ms/1000).toFixed(1)} s`);
       if(ev.type==='frames'){for(let k=0;k<ev.count;k++){const im=new Image();im.src=`/api/frame?id=${id}&i=${next++}`;frames.push(im)} play(ev.width,ev.height)}
       if(ev.type==='done')log(`done: ${ev.frames} frames in ${ev.secs.toFixed(1)} s`);
       if(ev.type==='error')log('error: '+ev.message);

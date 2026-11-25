@@ -112,7 +112,7 @@ class Pipeline:
         x = rng.normal(c.in_channels * lt * lh * lw).reshape(c.in_channels, lt, lh, lw)
         tm.prepare_s = time.perf_counter() - t0
         if on:
-            on({"type": "prepared", "secs": tm.prepare_s, "tokens": g.tokens(c)})
+            on({"type": "prepared", "ms": tm.prepare_s * 1000.0, "tokens": g.tokens(c)})
         sched = self.m.schedule
         for i, t in enumerate(sched.timesteps):
             ts = time.perf_counter()
@@ -122,7 +122,7 @@ class Pipeline:
             x = dmd_step(x, v, sigma, nxt, noise)
             tm.steps_s.append(time.perf_counter() - ts)
             if on:
-                on({"type": "step", "index": i, "total": len(sched), "secs": tm.steps_s[-1]})
+                on({"type": "step", "index": i, "total": len(sched), "ms": tm.steps_s[-1] * 1000.0})
         return x
 
     # ---- decode ---------------------------------------------------------------------

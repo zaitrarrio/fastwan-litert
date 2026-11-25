@@ -8,6 +8,9 @@
 
 const f = Math.fround;
 
+/** One RGBA frame (`width·height·4`, alpha 255), accepted by `new ImageData(frame, width, height)`. */
+export type RgbaFrame = Uint8ClampedArray<ArrayBuffer>;
+
 /** `[C, T, H, W]` → `[T·(H/p)·(W/p), C·p²]`, feature `c·p² + kh·p + kw` (the Conv3d `(1, p, p)` weight flattened). */
 export function patchify(latent: Float32Array, c: number, t: number, h: number, w: number, p: number): Float32Array {
   if (latent.length !== c * t * h * w) throw new Error(`patchify: ${latent.length} values for [${c}, ${t}, ${h}, ${w}]`);
@@ -106,12 +109,12 @@ export function geluTanh(x: number): number {
  * alpha 255, ready for `ImageData`) with fastwan-rs's rounding
  * (`(clamp(v)·255 + 0.5) as u8`, float32 arithmetic, truncation).
  */
-export function toRgba8(frames: Float32Array, n: number, h: number, w: number): Uint8ClampedArray[] {
+export function toRgba8(frames: Float32Array, n: number, h: number, w: number): RgbaFrame[] {
   if (frames.length !== n * 3 * h * w) throw new Error(`to_rgb8: ${frames.length} values for [${n}, 3, ${h}, ${w}]`);
-  const out: Uint8ClampedArray[] = [];
+  const out: RgbaFrame[] = [];
   const plane = h * w;
   for (let i = 0; i < n; i++) {
-    const px = new Uint8ClampedArray(plane * 4);
+    const px: RgbaFrame = new Uint8ClampedArray(new ArrayBuffer(plane * 4));
     const base = i * 3 * plane;
     for (let j = 0; j < plane; j++) {
       px[j * 4] = quantize(frames[base + j]);

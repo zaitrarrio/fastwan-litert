@@ -89,11 +89,11 @@ def cmd_generate(a: argparse.Namespace) -> int:
 
     def on(ev):
         if ev["type"] == "step":
-            _log(f"step {ev['index'] + 1}/{ev['total']}: {ev['secs']:.1f} s")
+            _log(f"step {ev['index'] + 1}/{ev['total']}: {ev['ms'] / 1000:.1f} s")
         elif ev["type"] == "frames":
             _log(f"frames {ev['first']}..{ev['first'] + ev['count']} {ev['width']}x{ev['height']}")
         elif ev["type"] == "prepared":
-            _log(f"prepared {ev['tokens']} tokens in {ev['secs']:.1f} s")
+            _log(f"prepared {ev['tokens']} tokens in {ev['ms'] / 1000:.1f} s")
 
     video, tm = pipe.generate(embeds, g, a.seed, on)
     _write_video(Path(a.out), video)

@@ -170,7 +170,7 @@ the first chunk). Stage `s` MemBlocks run on `F · Π tgrow[<s]` frames of
 | | name | shape |
 |---|---|---|
 | in | `z` | `[F, 16, H, W]` frame-major latent |
-| in | `mem_0` … `mem_8` | `[1, widths[s], H·2^s, W·2^s]`, `s = i / 3` |
+| in | `mem_0` … `mem_8` | `[1, widths[s], H·2^s, W·2^s]`, `s = i / mem_blocks` (memory `i` belongs to MemBlock `i mod mem_blocks` of stage `s`) |
 | out | `rgb` | `[4F, 3, 8pH, 8pW]` in `[0, 1]` |
 | out | `mem_out_0` … `mem_out_8` | as the inputs: pass to the next chunk |
 
@@ -211,8 +211,9 @@ Rules every runtime follows:
 - **No implicit fallbacks.** A geometry without graphs, a manifest of
   another `format`, or a graph whose signature does not match this file is
   an error with the mismatch in its message.
-- **Events.** Runtimes report `prepared`, one `step {index, total, ms}` per
-  DMD step and `frames {first, count, width, height, rgb}` per TAEHV chunk,
+- **Events.** Runtimes report `prepared {ms, tokens}`, one `step {index, total, ms}` per
+  DMD step and `frames {first, count, width, height, rgb}` per TAEHV chunk
+  (times in milliseconds; `rel` in the fixture check is `max|Δ| / max|expected|`),
   so a page can play frames while the clip is still decoding.
 
 ## Weight formats
