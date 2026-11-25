@@ -1,5 +1,7 @@
 // :core — the host side of fastwan-litert in pure Kotlin/JVM. No Android imports; the Android app
 // (and any JVM host) plugs a GraphStore in.
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
@@ -9,12 +11,14 @@ plugins {
 group = "dev.fastwan.litert"
 version = "0.1.0"
 
+// JVM 17 bytecode (Android's desugaring target and the JDK a CI box has); builds with any JDK >= 17.
 java {
-    toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
 kotlin {
-    jvmToolchain(17)
+    compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     explicitApi()
 }
 
