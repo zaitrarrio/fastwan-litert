@@ -1,0 +1,31 @@
+{
+ "size": "480x272x33",
+ "seed": 7,
+ "weights": "f16",
+ "accelerator": "cpu",
+ "latent_rel_err": 0.006590087898075581,
+ "step_velocity_rel_err": [
+  0.000743781856726855,
+  0.0009855340467765927,
+  0.000547081814147532
+ ],
+ "decode_max_abs_8bit": 1,
+ "decode_mean_abs_8bit": 0.012484449272133095,
+ "end_to_end_mean_abs_8bit": 0.19323659387997624,
+ "graphs_denoise_s": 145.43227672576904,
+ "graphs_decode_s": 2.611095428466797,
+ "torch_denoise_s": 85.12775349617004,
+ "torch_decode_s": 3.0966925621032715,
+ "latent_shape": [
+  16,
+  9,
+  34,
+  60
+ ],
+ "frames": [
+  33,
+  272,
+  480,
+  3
+ ]
+}
