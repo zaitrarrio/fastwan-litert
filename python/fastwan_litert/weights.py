@@ -168,6 +168,34 @@ def _t(src: WeightSource, name: str, shape: tuple[int, ...]) -> torch.Tensor:
 
 
 @torch.no_grad()
+def load_block(l: int, qkv, kv, post, src: WeightSource, cfg: WanConfig) -> None:
+    """Block `l`'s tensors into its three graph modules (`modules.BlockQkv`, `BlockKV`, `BlockPost`)."""
+    d = cfg.dim
+    p = f"blocks.{l}"
+
+    def lin(mod: torch.nn.Linear, key: str, shape: tuple[int, int]):
+        mod.weight.copy_(_t(src, f"{key}.weight", shape))
+        mod.bias.copy_(_t(src, f"{key}.bias", (shape[0],)))
+
+    lin(qkv.to_q, f"{p}.attn1.to_q", (d, d))
+    lin(qkv.to_k, f"{p}.attn1.to_k", (d, d))
+    lin(qkv.to_v, f"{p}.attn1.to_v", (d, d))
+    qkv.norm_q.copy_(_t(src, f"{p}.attn1.norm_q.weight", (d,)))
+    qkv.norm_k.copy_(_t(src, f"{p}.attn1.norm_k.weight", (d,)))
+    lin(post.to_out, f"{p}.attn1.to_out.0", (d, d))
+    lin(kv.to_k, f"{p}.attn2.to_k", (d, d))
+    lin(kv.to_v, f"{p}.attn2.to_v", (d, d))
+    kv.norm_k.copy_(_t(src, f"{p}.attn2.norm_k.weight", (d,)))
+    lin(post.to_q2, f"{p}.attn2.to_q", (d, d))
+    post.norm_q2.copy_(_t(src, f"{p}.attn2.norm_q.weight", (d,)))
+    lin(post.to_out2, f"{p}.attn2.to_out.0", (d, d))
+    post.norm2.weight.copy_(_t(src, f"{p}.norm2.weight", (d,)))
+    post.norm2.bias.copy_(_t(src, f"{p}.norm2.bias", (d,)))
+    lin(post.ffn_in, f"{p}.ffn.net.0.proj", (cfg.ffn_dim, d))
+    lin(post.ffn_out, f"{p}.ffn.net.2", (d, cfg.ffn_dim))
+
+
+@torch.no_grad()
 def load_dit(dit, src: WeightSource) -> None:
     """Fill a `modules.WanDit` from Diffusers-named tensors."""
     cfg: WanConfig = dit.cfg
@@ -192,30 +220,15 @@ def load_dit(dit, src: WeightSource) -> None:
     dit.head.proj_out.weight.copy_(_t(src, "proj_out.weight", (cfg.patch_features_out(), d)))
     dit.head.proj_out.bias.copy_(_t(src, "proj_out.bias", (cfg.patch_features_out(),)))
     for l in range(cfg.layers):
-        p = f"blocks.{l}"
+        tm.block_tables[l].copy_(_t(src, f"blocks.{l}.scale_shift_table", (1, 6, d)).reshape(6, d))
+        if l < len(dit.qkv):
+            load_block(l, dit.qkv[l], dit.kv[l], dit.post[l], src, cfg)
 
-        def lin(mod: torch.nn.Linear, key: str, shape: tuple[int, int]):
-            mod.weight.copy_(_t(src, f"{key}.weight", shape))
-            mod.bias.copy_(_t(src, f"{key}.bias", (shape[0],)))
 
-        q, kv, post = dit.qkv[l], dit.kv[l], dit.post[l]
-        lin(q.to_q, f"{p}.attn1.to_q", (d, d))
-        lin(q.to_k, f"{p}.attn1.to_k", (d, d))
-        lin(q.to_v, f"{p}.attn1.to_v", (d, d))
-        q.norm_q.copy_(_t(src, f"{p}.attn1.norm_q.weight", (d,)))
-        q.norm_k.copy_(_t(src, f"{p}.attn1.norm_k.weight", (d,)))
-        lin(post.to_out, f"{p}.attn1.to_out.0", (d, d))
-        lin(kv.to_k, f"{p}.attn2.to_k", (d, d))
-        lin(kv.to_v, f"{p}.attn2.to_v", (d, d))
-        kv.norm_k.copy_(_t(src, f"{p}.attn2.norm_k.weight", (d,)))
-        lin(post.to_q2, f"{p}.attn2.to_q", (d, d))
-        post.norm_q2.copy_(_t(src, f"{p}.attn2.norm_q.weight", (d,)))
-        lin(post.to_out2, f"{p}.attn2.to_out.0", (d, d))
-        post.norm2.weight.copy_(_t(src, f"{p}.norm2.weight", (d,)))
-        post.norm2.bias.copy_(_t(src, f"{p}.norm2.bias", (d,)))
-        lin(post.ffn_in, f"{p}.ffn.net.0.proj", (cfg.ffn_dim, d))
-        lin(post.ffn_out, f"{p}.ffn.net.2", (d, cfg.ffn_dim))
-        tm.block_tables[l].copy_(_t(src, f"{p}.scale_shift_table", (1, 6, d)).reshape(6, d))
+def open_source(spec):
+    """`("safetensors", path)` or `("synthetic", seed)` → a WeightSource (picklable for worker processes)."""
+    kind, arg = spec
+    return SafetensorsDir(arg) if kind == "safetensors" else Synthetic(int(arg))
 
 
 @torch.no_grad()

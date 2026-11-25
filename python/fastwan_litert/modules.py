@@ -190,15 +190,17 @@ class WanDit(nn.Module):
     Input latent `[C, T, H, W]`, prompt `[L, text_dim]`, timestep scalar;
     output velocity `[C, T, H, W]`."""
 
-    def __init__(self, cfg: WanConfig):
+    def __init__(self, cfg: WanConfig, with_blocks: bool = True):
+        """`with_blocks=False` allocates everything but the blocks (the exporter builds those one at a time)."""
         super().__init__()
         self.cfg = cfg
         self.time = TimeMods(cfg)
         self.text = TextEmbed(cfg)
         self.patch = PatchEmbed(cfg)
-        self.kv = nn.ModuleList(BlockKV(cfg) for _ in range(cfg.layers))
-        self.qkv = nn.ModuleList(BlockQkv(cfg) for _ in range(cfg.layers))
-        self.post = nn.ModuleList(BlockPost(cfg) for _ in range(cfg.layers))
+        n = cfg.layers if with_blocks else 0
+        self.kv = nn.ModuleList(BlockKV(cfg) for _ in range(n))
+        self.qkv = nn.ModuleList(BlockQkv(cfg) for _ in range(n))
+        self.post = nn.ModuleList(BlockPost(cfg) for _ in range(n))
         self.head = Head(cfg)
         self.attn = Attention()
 

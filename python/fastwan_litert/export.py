@@ -54,6 +54,37 @@ def _convert(module: torch.nn.Module, kwargs: dict[str, torch.Tensor], out: Path
     edge.export(str(out))
 
 
+def _block_job(args) -> dict:
+    """Worker: export one block's `kv`, `qkv` and `post` graphs from a fresh source."""
+    cfg_json, src_spec, l, out_dir, chunk, weights = args
+    import warnings
+
+    warnings.filterwarnings("ignore")
+    from .modules import BlockKV, BlockPost, BlockQkv
+    from .weights import load_block, open_source
+
+    cfg = WanConfig.from_json(cfg_json)
+    src = open_source(src_spec)
+    out_dir = Path(out_dir)
+    d, H, hd, L = cfg.dim, cfg.heads, cfg.head_dim, cfg.text_len
+    qkv, kv, post = BlockQkv(cfg).eval(), BlockKV(cfg).eval(), BlockPost(cfg).eval()
+    load_block(l, qkv, kv, post, src, cfg)
+    entry = {}
+    for kind, module, kw in (
+        ("kv", kv, {"ctx": torch.randn(L, d)}),
+        ("qkv", qkv, {"h": torch.randn(chunk, d), "mods": torch.randn(6, d), "cos": torch.rand(chunk, hd // 2), "sin": torch.rand(chunk, hd // 2)}),
+        ("post", post, {"h": torch.randn(chunk, d), "o": torch.randn(chunk, d), "mods": torch.randn(6, d), "k2": torch.randn(H, L, hd), "v2": torch.randn(H, L, hd)}),
+    ):
+        name = f"block_{l:02d}_{kind}.tflite"
+        t0 = time.time()
+        _convert(module, kw, out_dir / name, weights == "f16")
+        if weights in ("int8", "int4"):
+            _quantize(out_dir / name, weights)
+        entry[kind] = name
+        entry[f"{kind}_secs"] = round(time.time() - t0, 1)
+    return {"l": l, **entry}
+
+
 def _quantize(path: Path, weights: str) -> None:
     """Weight-only int8 / int4 on the block linears of one graph file, in place."""
     from ai_edge_quantizer import quantizer, recipe
@@ -81,6 +112,7 @@ def export(
     dit_src: WeightSource,
     tae_src: WeightSource,
     *,
+    src_spec,
     model_name: str,
     weights: str = "f16",
     chunk: int = 1024,
@@ -88,6 +120,7 @@ def export(
     sizes: list[Geometry],
     tae_frames: int = 3,
     schedule: DmdSchedule | None = None,
+    jobs: int = 1,
     log=print,
 ) -> dict:
     if weights not in WEIGHT_FORMATS:
@@ -98,7 +131,7 @@ def export(
     out_dir.mkdir(parents=True, exist_ok=True)
     sched = schedule or DmdSchedule.fastwan_1_3b()
     torch.manual_seed(0)
-    dit = WanDit(cfg).eval()
+    dit = WanDit(cfg, with_blocks=False).eval()
     load_dit(dit, dit_src)
     tae = TaeHv(tcfg).eval()
     load_tae(tae, tae_src)
@@ -129,23 +162,27 @@ def export(
     graphs["head"] = "head.tflite"
     done("head.tflite", t0)
 
+    job_args = [(cfg.to_json(), src_spec, l, str(out_dir), chunk, weights) for l in range(cfg.layers)]
+    results = []
+    if jobs > 1:
+        import multiprocessing as mp
+
+        with mp.get_context("spawn").Pool(jobs) as pool:
+            for r in pool.imap_unordered(_block_job, job_args):
+                results.append(r)
+                log(f"  block {r['l']:02d}: kv {r['kv_secs']} s, qkv {r['qkv_secs']} s, post {r['post_secs']} s")
+    else:
+        for a in job_args:
+            r = _block_job(a)
+            results.append(r)
+            log(f"  block {r['l']:02d}: kv {r['kv_secs']} s, qkv {r['qkv_secs']} s, post {r['post_secs']} s")
+    results.sort(key=lambda r: r["l"])
     blocks = []
-    for l in range(cfg.layers):
-        entry = {}
-        for kind, module, kw in (
-            ("kv", dit.kv[l], {"ctx": torch.randn(L, d)}),
-            ("qkv", dit.qkv[l], {"h": torch.randn(chunk, d), "mods": torch.randn(6, d), "cos": torch.rand(chunk, hd // 2), "sin": torch.rand(chunk, hd // 2)}),
-            ("post", dit.post[l], {"h": torch.randn(chunk, d), "o": torch.randn(chunk, d), "mods": torch.randn(6, d), "k2": torch.randn(H, L, hd), "v2": torch.randn(H, L, hd)}),
-        ):
-            name = f"block_{l:02d}_{kind}.tflite"
-            t0 = time.time()
-            _convert(module, kw, out_dir / name, weights == "f16")
-            if weights in ("int8", "int4"):
-                _quantize(out_dir / name, weights)
-            done(name, t0)
-            entry[kind] = name
-        entry["bytes"] = sum(files[entry[k]]["bytes"] for k in ("kv", "qkv", "post"))
-        blocks.append(entry)
+    for r in results:
+        for k in ("kv", "qkv", "post"):
+            pth = out_dir / r[k]
+            files[r[k]] = {"bytes": pth.stat().st_size, "sha256": _sha(pth)}
+        blocks.append({"kv": r["kv"], "qkv": r["qkv"], "post": r["post"], "bytes": sum(files[r[k]]["bytes"] for k in ("kv", "qkv", "post"))})
     graphs["blocks"] = blocks
 
     attention = []
@@ -220,7 +257,7 @@ def export_tiny(out_dir: Path, weights: str = "f32", log=print) -> dict:
     cfg, tcfg = WanConfig.tiny(), TaeConfig.tiny()
     src = Synthetic(0)
     manifest = export(
-        out_dir, cfg, tcfg, src, src, model_name="tiny", weights=weights, chunk=16, q_chunk=8,
+        out_dir, cfg, tcfg, src, src, src_spec=("synthetic", 0), model_name="tiny", weights=weights, chunk=16, q_chunk=8,
         sizes=[TINY_GEOMETRY], tae_frames=2, log=log,
     )
     dit = WanDit(cfg).eval()
