@@ -20,6 +20,16 @@ const jspi = flag("--jspi");
 const threads = flag("--threads");
 const timeoutMs = Number(opt("--timeout", "300")) * 1000;
 
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const here = dirname(fileURLToPath(import.meta.url));
+if (!existsSync(join(here, "..", "dist", "src", "index.js"))) {
+  console.error("web/dist is missing: run `npm run build` first (or `npm run test:fixture`, which builds)");
+  process.exit(2);
+}
+
 const { server, port } = await startServer({ quiet: true });
 const launch = { args: [] };
 if (accelerator === "webgpu") launch.args.push("--enable-unsafe-webgpu", "--enable-features=Vulkan");
@@ -28,6 +38,7 @@ let code = 1;
 try {
   const page = await browser.newPage();
   const logs = [];
+  var pageLogs = logs;
   page.on("console", (m) => logs.push(`[${m.type()}] ${m.text()}`));
   page.on("pageerror", (e) => logs.push(`[pageerror] ${e.message}`));
   const q = new URLSearchParams({ manual: "1" });
@@ -57,6 +68,7 @@ try {
   code = r.ok ? 0 : 1;
 } catch (e) {
   console.error("fixture check failed:", e);
+  if (typeof pageLogs !== "undefined" && pageLogs.length) console.error("page log:\n" + pageLogs.join("\n"));
   code = 1;
 } finally {
   await browser.close();
