@@ -22,10 +22,10 @@ thin hosts drive.
 
 | runtime | where | status |
 |---|---|---|
-| `python/` | desktop (`fastwan-litert export / generate / check / plan / serve`), the exporter, the reference | graphs equal the PyTorch model (rel 4e-7 on the latent, ≤ 1/255 on frames) and the PyTorch model equals Diffusers (rel 2e-7); runs on CPU here, GPU through `--accelerator gpu` untested |
-| `web/` | LiteRT.js on WebGPU / Wasm, the studio page | host math ported with tests; pipeline over the contract; runs the tiny fixture in headless Chromium |
-| `android/` | Kotlin, LiteRT `CompiledModel` (GPU) | `:core` host math + pipeline with JVM tests; `:app` needs the Android SDK to build |
-| `ios/` | Swift, LiteRT (Metal) | host math + pipeline with XCTest; LiteRT backend and SwiftUI demo need Xcode to build |
+| `python/` | desktop (`fastwan-litert export / generate / check / plan / serve`), the exporter, the reference | graphs equal the PyTorch model (rel 4e-7 on the latent, ≤ 1/255 on frames) and the PyTorch model equals Diffusers (rel 2e-7); 15 tests; runs on CPU here, `--accelerator gpu` untested |
+| `web/` | LiteRT.js on WebGPU / Wasm, the studio page | 16 vitest cases; the tiny fixture in headless Chromium on the Wasm backend: latent rel 2.9e-7, frames within 1/255; WebGPU path untested (no GPU here) |
+| `android/` | Kotlin `:core` + LiteRT 2.1.6 `CompiledModel` `:app` (GPU) | 27 JUnit tests pass (`gradle :core:test`); the LiteRT store compiles against the real AAR; `:app` needs the Android SDK and a device |
+| `ios/` | Swift package + TensorFlowLiteSwift / Metal, SwiftUI demo | written and self-reviewed, uncompiled (no Swift toolchain here) |
 
 Nothing here has run on a GPU through a LiteRT delegate yet, and the real
 checkpoint has not been exported in CI (1.3 B parameters). See
