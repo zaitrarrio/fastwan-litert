@@ -12,14 +12,14 @@ license = { text = "Apache-2.0" }
 dependencies = [
   "numpy>=1.26",
   "safetensors>=0.4",
-  "ai-edge-litert>=2.1",
+  "ai-edge-litert==2.1.2",
 ]
 
 [project.optional-dependencies]
 # Exporting needs PyTorch and the converter; running does not.
-export = ["torch>=2.9", "litert-torch>=0.8", "ai-edge-quantizer>=0.4"]
+export = ["torch>=2.9", "litert-torch==0.8.0", "ai-edge-quantizer==0.4.2"]
 # `tests/test_parity.py` compares against Diffusers' WanTransformer3DModel.
-test = ["pytest>=8", "diffusers>=0.43", "torch>=2.9", "litert-torch>=0.8", "ai-edge-quantizer>=0.4"]
+test = ["pytest>=8", "diffusers>=0.43", "torch>=2.9", "litert-torch==0.8.0", "ai-edge-quantizer==0.4.2"]
 # `fastwan-litert encode`: the UMT5-XXL prompt encoder (11 GB of weights).
 encode = ["torch>=2.9", "transformers>=5", "sentencepiece"]
 
